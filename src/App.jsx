@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 
+const EDIT_PASSWORD = "rjv4wUwh"; // ← Ваш пароль для редактирования
+const STORAGE_KEY = "consulting_site_content";
+
 const C0 = {
   nav: { logo: "Иван Петров", logoSub: "Операционный консалтинг" },
   hero: {
@@ -160,8 +163,16 @@ function ET({ v, path, save, edit, tag: T = "span", cls = "", style = {}, multi 
 }
 
 export default function App() {
-  const [data, setData] = useState(C0);
+  const [data, setData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : C0;
+    } catch { return C0; }
+  });
   const [editMode, setEditMode] = useState(false);
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [passInput, setPassInput] = useState("");
+  const [passError, setPassError] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", msg: "" });
   const [sent, setSent] = useState(false);
 
@@ -173,8 +184,24 @@ export default function App() {
       for (let i = 0; i < keys.length - 1; i++) cur = isNaN(keys[i]) ? cur[keys[i]] : cur[+keys[i]];
       const k = keys[keys.length - 1];
       if (isNaN(k)) cur[k] = value; else cur[+k] = value;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
+  }
+
+  function tryEnterEdit() {
+    if (passInput === EDIT_PASSWORD) {
+      setEditMode(true);
+      setShowPassModal(false);
+      setPassInput("");
+      setPassError(false);
+    } else {
+      setPassError(true);
+    }
+  }
+
+  function exitEdit() {
+    setEditMode(false);
   }
 
   const E = (p) => <ET {...p} save={save} edit={editMode} />;
@@ -229,13 +256,37 @@ export default function App() {
         @media(max-width:768px){.grid-2{grid-template-columns:1fr!important}.grid-3{grid-template-columns:1fr!important}.hide-mobile{display:none!important}}
       `}</style>
 
+      {/* PASSWORD MODAL */}
+      {showPassModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(11,31,58,0.7)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+          <div style={{ background: "#fff", padding: "40px 36px", width: 360, boxShadow: "0 24px 64px rgba(0,0,0,.2)" }}>
+            <h3 style={{ fontFamily: serif, fontSize: 22, fontWeight: 700, color: navy, marginBottom: 8 }}>Режим редактирования</h3>
+            <p style={{ fontFamily: sans, fontSize: 13, color: muted, marginBottom: 24 }}>Введите пароль для доступа</p>
+            <input
+              type="password"
+              placeholder="Пароль"
+              value={passInput}
+              onChange={e => { setPassInput(e.target.value); setPassError(false); }}
+              onKeyDown={e => e.key === "Enter" && tryEnterEdit()}
+              autoFocus
+              style={{ background: passError ? "#FFF5F5" : "#fff", border: `1.5px solid ${passError ? "#EF4444" : border}`, color: text, padding: "13px 16px", fontSize: 14, width: "100%", marginBottom: 8, outline: "none" }}
+            />
+            {passError && <p style={{ fontFamily: sans, fontSize: 12, color: "#EF4444", marginBottom: 12 }}>Неверный пароль</p>}
+            <div style={{ display: "flex", gap: 10, marginTop: passError ? 4 : 12 }}>
+              <button className="btn-primary" style={{ flex: 1, padding: "12px", fontSize: 13 }} onClick={tryEnterEdit}>Войти</button>
+              <button className="btn-ghost" style={{ padding: "12px 18px", fontSize: 13 }} onClick={() => { setShowPassModal(false); setPassInput(""); setPassError(false); }}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* EDIT BAR */}
       <div style={{ position: "sticky", top: 0, zIndex: 9999, background: editMode ? "#EFF6FF" : "#F8FAFC", borderBottom: `2px solid ${editMode ? "#1A56DB" : "#E2E8F0"}`, padding: "8px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFamily: sans, fontSize: 12, color: editMode ? "#1A56DB" : "#94A3B8", fontWeight: 600 }}>
-          {editMode ? "✏️ Режим редактирования — кликайте на любой текст для изменения" : "Ваша платформа · Режим просмотра"}
+          {editMode ? "✏️ Режим редактирования — кликайте на любой текст · Изменения сохраняются автоматически" : ""}
         </span>
-        <button className="btn-primary" style={{ padding: "6px 20px", fontSize: 12 }} onClick={() => setEditMode(e => !e)}>
-          {editMode ? "✓ Готово" : "✏️ Редактировать"}
+        <button className="btn-primary" style={{ padding: "6px 20px", fontSize: 12 }} onClick={() => editMode ? exitEdit() : setShowPassModal(true)}>
+          {editMode ? "✓ Завершить редактирование" : "✏️ Редактировать"}
         </button>
       </div>
 
