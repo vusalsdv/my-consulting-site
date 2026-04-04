@@ -13,6 +13,7 @@ from .pipeline import pipeline, Status
 from .channel_monitor import monitor
 from .job_scanner import analyze_vacancy, generate_cover_letter
 from .storage import store
+from .hh_scanner import hh_scanner
 
 log = logging.getLogger(__name__)
 owner_router = Router()
@@ -175,7 +176,11 @@ async def cmd_help(msg: Message) -> None:
         "/pipeline — сводка по статусам\n"
         "/list — список активных вакансий\n"
         "/status V001 sent — обновить статус\n\n"
-        "<b>Поиск по каналам:</b>\n"
+        "<b>HH.ru:</b>\n"
+        "/hh — поиск по всем запросам\n"
+        "/hhsearch [запрос] — быстрый поиск\n"
+        "/hhsalary [сумма] — изменить порог ЗП\n\n"
+        "<b>Поиск по Telegram-каналам:</b>\n"
         "/addchannel @username — добавить канал\n"
         "/removechannel @username — убрать\n"
         "/channels — список каналов\n"
@@ -306,6 +311,98 @@ async def cb_skip(cb: CallbackQuery) -> None:
     pipeline.set_status(vid, Status.DECLINED_BY_ME)
     await cb.answer("Пропущено")
     await cb.message.answer(f"🚫 {vid} пропущена.")
+
+
+# ── HH.ru commands ───────────────────────────────────────────
+
+@owner_router.message(Command("hh"))
+async def cmd_hh(msg: Message) -> None:
+    if not _is_owner(msg):
+        return
+    queries = hh_scanner._queries
+    await msg.answer(
+        f"🔍 <b>Запускаю поиск на hh.ru</b>\n\n"
+        f"Запросы: {', '.join(queries)}\n"
+        f"Формат: только удалёнка\n"
+        f"ЗП: от {hh_scanner._min_salary:,} ₽\n\n"
+        f"Ищу...",
+        parse_mode="HTML",
+    )
+    vacancies = await hh_scanner.scan_all()
+    if not vacancies:
+        await msg.answer("Новых подходящих вакансий на hh.ru не найдено.")
+        return
+    await msg.answer(f"Найдено <b>{len(vacancies)}</b> вакансий. Анализирую...", parse_mode="HTML")
+    for v in vacancies[:8]:  # максимум 8 за раз
+        await _send_hh_card(msg, v)
+
+
+@owner_router.message(Command("hhsearch"))
+async def cmd_hhsearch(msg: Message) -> None:
+    """Быстрый поиск по конкретному запросу: /hhsearch vp operations"""
+    if not _is_owner(msg):
+        return
+    parts = (msg.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await msg.answer("Использование: <code>/hhsearch операционный директор</code>", parse_mode="HTML")
+        return
+    query = parts[1]
+    await msg.answer(f"🔍 Ищу на hh.ru: <i>{query}</i>...", parse_mode="HTML")
+    items = await hh_scanner.search(query, per_page=10)
+    if not items:
+        await msg.answer("Ничего не найдено.")
+        return
+    formatted = [hh_scanner._format(i) for i in items if hh_scanner._format(i)]
+    await msg.answer(f"Найдено <b>{len(formatted)}</b> результатов:", parse_mode="HTML")
+    for v in formatted[:5]:
+        await _send_hh_card(msg, v)
+
+
+@owner_router.message(Command("hhsalary"))
+async def cmd_hhsalary(msg: Message) -> None:
+    """Изменить минимальную зарплату: /hhsalary 350000"""
+    if not _is_owner(msg):
+        return
+    parts = (msg.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await msg.answer(
+            f"Текущий порог: <b>{hh_scanner._min_salary:,} ₽</b>\n"
+            f"Изменить: <code>/hhsalary 350000</code>",
+            parse_mode="HTML",
+        )
+        return
+    hh_scanner.set_min_salary(int(parts[1]))
+    await msg.answer(f"✅ Минимальная зарплата: <b>{hh_scanner._min_salary:,} ₽</b>", parse_mode="HTML")
+
+
+async def _send_hh_card(msg: Message, v: dict) -> None:
+    """Отправляет карточку вакансии с HH с кнопками."""
+    text = (
+        f"🏢 <b>{v['company']}</b>\n"
+        f"📌 {v['title']}\n"
+        f"💰 {v['salary']}\n"
+        f"🖥 {v['schedule']} | 📍 {v['city']}\n"
+        f"📅 {v['published']}\n"
+        f"🔗 <a href='{v['url']}'>Открыть на hh.ru</a>"
+        + (f"\n\n<i>{v['snippet'][:200]}</i>" if v.get("snippet") else "")
+    )
+    # Сохраняем в pipeline как предварительную вакансию
+    analysis = {
+        "company": v["company"],
+        "position": v["title"],
+        "salary": v["salary"],
+        "format": v["schedule"],
+        "match": "среднее",
+        "reason": "Найдена на hh.ru",
+        "contact": v["url"],
+        "raw": f"Компания: {v['company']}\nДолжность: {v['title']}\nЗП: {v['salary']}",
+    }
+    vac = pipeline.add(analysis, v.get("snippet", v["title"]), source="hh.ru")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✍️ Написать письмо", callback_data=f"cover:{vac.vid}"),
+        InlineKeyboardButton(text="🚫 Пропустить", callback_data=f"skip:{vac.vid}"),
+    ]])
+    await msg.answer(text, parse_mode="HTML", reply_markup=keyboard, disable_web_page_preview=True)
 
 
 # ── Export for use in handlers.py ────────────────────────────
