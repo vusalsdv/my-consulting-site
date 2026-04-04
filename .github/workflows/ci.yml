@@ -28,6 +28,10 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
+        env:
+          TG_BOT_TOKEN: "1234567890:AAFakeTokenForTesting"
+          TG_OWNER_CHAT_ID: "999999999"
+          ANTHROPIC_API_KEY: "sk-ant-fake-key-for-testing"
 
   # ── Frontend build ─────────────────────────────────────────
   frontend:
