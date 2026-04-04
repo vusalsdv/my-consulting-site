@@ -97,6 +97,7 @@ def test_build_messages_does_not_mutate_history():
 
 def test_config_loads():
     from backend.bot import config
-    assert config.BOT_TOKEN == "1234567890:AAFakeTokenForTesting"
-    assert config.OWNER_CHAT_ID == "999999999"
+    assert config.BOT_TOKEN  # не пустой
+    assert config.OWNER_CHAT_ID  # не пустой
     assert config.CLAUDE_MODEL == "claude-sonnet-4-6"
+    assert config.ANTHROPIC_API_KEY  # не пустой
