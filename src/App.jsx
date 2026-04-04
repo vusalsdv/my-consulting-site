@@ -175,6 +175,33 @@ export default function App() {
   const [passError, setPassError] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", msg: "" });
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
+  async function submitBooking() {
+    if (!form.name.trim() || !form.phone.trim()) return;
+    setSending(true);
+    setBookingError("");
+    try {
+      const resp = await fetch(`${BACKEND_URL}/api/booking`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name, phone: form.phone, msg: form.msg }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setSent(true);
+      } else {
+        setBookingError(data.detail || "Ошибка. Попробуйте ещё раз или напишите в Telegram.");
+      }
+    } catch {
+      setBookingError("Не удалось отправить заявку. Проверьте соединение или напишите в Telegram.");
+    } finally {
+      setSending(false);
+    }
+  }
 
   function save(path, value) {
     const keys = path.split(".");
@@ -593,8 +620,16 @@ export default function App() {
                     <input placeholder="Телефон или Telegram" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", borderRadius: 0 }} />
                     <textarea placeholder="Расскажите о вашей задаче (опционально)" value={form.msg} onChange={e => setForm(p => ({ ...p, msg: e.target.value }))} rows={4} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", resize: "vertical", borderRadius: 0 }} />
                   </div>
-                  <button className="btn-primary" style={{ width: "100%", padding: "16px", fontSize: 13, marginBottom: 12, textAlign: "center" }} onClick={() => { if (form.name && form.phone) setSent(true); }}>
-                    <E v={data.booking.cta} path="booking.cta" />
+                  {bookingError && (
+                    <p style={{ fontFamily: sans, fontSize: 13, color: "#FCA5A5", marginBottom: 10, lineHeight: 1.5 }}>{bookingError}</p>
+                  )}
+                  <button
+                    className="btn-primary"
+                    style={{ width: "100%", padding: "16px", fontSize: 13, marginBottom: 12, textAlign: "center", opacity: sending ? 0.6 : 1, cursor: sending ? "not-allowed" : "pointer" }}
+                    onClick={submitBooking}
+                    disabled={sending}
+                  >
+                    {sending ? "Отправляем…" : <E v={data.booking.cta} path="booking.cta" />}
                   </button>
                   <E v={data.booking.note} path="booking.note" tag="p" style={{ fontFamily: sans, fontSize: 12, color: "rgba(255,255,255,.3)", textAlign: "center" }} />
                 </div>
