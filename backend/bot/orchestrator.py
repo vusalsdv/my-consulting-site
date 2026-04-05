@@ -18,7 +18,7 @@ from .config import ANTHROPIC_API_KEY, CLAUDE_MODEL, OWNER_NAME
 from .profile import profile
 
 log = logging.getLogger(__name__)
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 # ── Agent definitions ─────────────────────────────────────────
 
@@ -88,7 +88,7 @@ class Orchestrator:
 
     async def plan(self, task: str) -> list[dict]:
         """Анализирует задачу и возвращает список шагов."""
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=600,
             system=ORCHESTRATOR_PROMPT,
@@ -159,7 +159,7 @@ class Orchestrator:
             parts.append(f"[{r.agent}]: {r.result}")
         combined = "\n\n".join(parts)
 
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Собери результаты работы команды агентов в единый чёткий ответ для {OWNER_NAME}а. Без лишних слов.",
@@ -170,7 +170,7 @@ class Orchestrator:
     # ── Specialized agents ────────────────────────────────────
 
     async def _direct_answer(self, task: str, context: str) -> str:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты личный ассистент {OWNER_NAME}а. Отвечай чётко и по делу.\n\n{profile.as_text()}",
@@ -183,7 +183,7 @@ class Orchestrator:
         return await generate_cover_letter(task, {})
 
     async def _agent_research(self, task: str) -> str:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты агент ресёрча. Собери структурированную информацию по запросу {OWNER_NAME}а.",
@@ -193,7 +193,7 @@ class Orchestrator:
 
     async def _agent_analysis(self, task: str, context: str) -> str:
         full = f"{task}\n\nКонтекст:\n{context}" if context else task
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты агент анализа. Дай структурированный разбор.\n\n{profile.as_text()}",
@@ -202,7 +202,7 @@ class Orchestrator:
         return response.content[0].text
 
     async def _agent_draft(self, task: str) -> str:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты агент написания текстов. Пишешь от имени или для {OWNER_NAME}а.\n\n{profile.as_text()}",
@@ -211,7 +211,7 @@ class Orchestrator:
         return response.content[0].text
 
     async def _agent_plan(self, task: str) -> str:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты агент планирования. Строишь конкретные планы с шагами для {OWNER_NAME}а.\n\n{profile.as_text()}",

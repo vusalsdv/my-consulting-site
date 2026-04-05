@@ -9,7 +9,7 @@ from .config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from .profile import profile
 
 log = logging.getLogger(__name__)
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 _ANALYZE_PROMPT = """Проанализируй вакансию и верни структурированный ответ.
 
@@ -66,7 +66,7 @@ async def analyze_vacancy(text: str) -> dict:
         salary=profile.get("salary_expectation", "от 300 000 ₽ net"),
         text=text,
     )
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=600,
         messages=[{"role": "user", "content": prompt}],
@@ -93,7 +93,7 @@ async def generate_cover_letter(vacancy_text: str, analysis: dict) -> str:
         vacancy_text=vacancy_text,
         analysis=analysis.get("raw", ""),
     )
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1200,
         messages=[{"role": "user", "content": prompt}],

@@ -78,16 +78,21 @@ DEFAULT_PROFILE = {
 
 _SUPABASE_TABLE = "owner_profile"
 _SUPABASE_ROW_ID = "main"
+_supabase_client = None  # синглтон
 
 
 def _get_supabase():
-    """Возвращает Supabase клиент или None если не настроен."""
+    """Возвращает Supabase клиент (синглтон) или None если не настроен."""
+    global _supabase_client
+    if _supabase_client is not None:
+        return _supabase_client
     try:
         from .config import SUPABASE_URL, SUPABASE_ANON_KEY
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             return None
         from supabase import create_client
-        return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        return _supabase_client
     except Exception as e:
         log.warning("Supabase init error: %s", e)
         return None

@@ -6,7 +6,7 @@ Claude API wrapper — генерирует ответы от имени асс�
 import anthropic
 from .config import ANTHROPIC_API_KEY, CLAUDE_MODEL, ASSISTANT_NAME, OWNER_NAME
 
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = f"""Ты — {ASSISTANT_NAME}, личный помощник {OWNER_NAME}а.
 
@@ -50,7 +50,7 @@ async def get_reply(history: list[dict], user_message: str) -> str:
     """Возвращает ответ Claude на сообщение пользователя."""
     messages = build_messages(history, user_message)
 
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
         system=SYSTEM_PROMPT,

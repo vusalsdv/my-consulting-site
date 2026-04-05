@@ -11,7 +11,7 @@ from .profile import profile
 from .storage import store
 
 log = logging.getLogger(__name__)
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 OWNER_SYSTEM_PROMPT = """Ты — личный AI-ассистент {owner_name}а. Работаешь как Claude и Claude Code — умный, прямой, эффективный.
 
@@ -54,7 +54,7 @@ async def get_owner_reply(history: list[dict], user_message: str) -> tuple[str, 
 
     messages = list(history) + [{"role": "user", "content": user_message}]
 
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=2048,
         system=system,
@@ -89,7 +89,7 @@ async def extract_and_save_profile_facts(user_message: str) -> list[str]:
 Если нет фактов — верни только слово "НЕТ"."""
 
     try:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],

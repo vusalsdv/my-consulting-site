@@ -205,8 +205,11 @@ async def handle_owner_text(msg: Message) -> None:
     try:
         reply, new_facts = await get_owner_reply(history, user_text)
     except Exception as e:
-        log.error("Owner assistant error: %s", e)
-        await msg.answer("Ошибка. Попробуй ещё раз.")
+        log.error("Owner assistant error: %s", e, exc_info=True)
+        await msg.answer(
+            f"⚠️ Ошибка ассистента:\n<code>{type(e).__name__}: {e}</code>",
+            parse_mode="HTML",
+        )
         return
 
     # Сохраняем в историю

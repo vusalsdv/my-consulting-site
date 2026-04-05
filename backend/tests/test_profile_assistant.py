@@ -6,7 +6,7 @@ import os
 import json
 import tempfile
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # Фейковые env vars до импорта модулей
 os.environ.setdefault("TG_BOT_TOKEN", "1234567890:AAFakeTokenForTesting")
@@ -147,12 +147,19 @@ def _mock_anthropic_response(text: str):
     return mock_resp
 
 
+def _async_mock_create(text: str):
+    """Возвращает AsyncMock который отдаёт нужный ответ."""
+    mock = AsyncMock(return_value=_mock_anthropic_response(text))
+    return mock
+
+
 @pytest.mark.asyncio
 async def test_get_owner_reply_returns_tuple():
     from backend.bot.owner_assistant import get_owner_reply
-    mock_resp = _mock_anthropic_response("Привет! Чем могу помочь?")
     with patch("backend.bot.owner_assistant._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("Привет! Чем могу помочь?")
+        )
         reply, facts = await get_owner_reply([], "Привет")
     assert isinstance(reply, str)
     assert isinstance(facts, list)
@@ -164,9 +171,10 @@ async def test_get_owner_reply_returns_tuple():
 async def test_get_owner_reply_extracts_facts():
     from backend.bot.owner_assistant import get_owner_reply
     reply_text = "Запомнил: Работал в компании ABC как COO\nОтлично, учту это."
-    mock_resp = _mock_anthropic_response(reply_text)
     with patch("backend.bot.owner_assistant._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response(reply_text)
+        )
         reply, facts = await get_owner_reply([], "Работал в компании ABC")
     assert len(facts) == 1
     assert "Работал в компании ABC как COO" in facts[0]
@@ -175,9 +183,10 @@ async def test_get_owner_reply_extracts_facts():
 @pytest.mark.asyncio
 async def test_extract_and_save_profile_facts_no_facts():
     from backend.bot.owner_assistant import extract_and_save_profile_facts
-    mock_resp = _mock_anthropic_response("НЕТ")
     with patch("backend.bot.owner_assistant._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("НЕТ")
+        )
         facts = await extract_and_save_profile_facts("Погода хорошая")
     assert facts == []
 
@@ -185,9 +194,10 @@ async def test_extract_and_save_profile_facts_no_facts():
 @pytest.mark.asyncio
 async def test_extract_and_save_profile_facts_with_facts():
     from backend.bot.owner_assistant import extract_and_save_profile_facts
-    mock_resp = _mock_anthropic_response("ФАКТ: Знает Python\nФАКТ: Опыт в стартапах 5 лет")
     with patch("backend.bot.owner_assistant._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("ФАКТ: Знает Python\nФАКТ: Опыт в стартапах 5 лет")
+        )
         facts = await extract_and_save_profile_facts("Знаю Python, работал в стартапах")
     assert len(facts) == 2
     assert "Знает Python" in facts[0]
@@ -197,7 +207,7 @@ async def test_extract_and_save_profile_facts_with_facts():
 async def test_extract_handles_api_error():
     from backend.bot.owner_assistant import extract_and_save_profile_facts
     with patch("backend.bot.owner_assistant._client") as mock_client:
-        mock_client.messages.create.side_effect = Exception("API Error")
+        mock_client.messages.create = AsyncMock(side_effect=Exception("API Error"))
         facts = await extract_and_save_profile_facts("Любое сообщение")
     assert facts == []
 
@@ -208,9 +218,10 @@ async def test_extract_handles_api_error():
 async def test_orchestrator_plan_parses_steps():
     from backend.bot.orchestrator import Orchestrator
     plan_text = "ПЛАН:\n1. draft: Написать email\n2. plan: Составить стратегию"
-    mock_resp = _mock_anthropic_response(plan_text)
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response(plan_text)
+        )
         o = Orchestrator()
         steps = await o.plan("Помоги с письмом")
     assert len(steps) == 2
@@ -222,9 +233,10 @@ async def test_orchestrator_plan_parses_steps():
 @pytest.mark.asyncio
 async def test_orchestrator_plan_returns_empty_on_no_plan():
     from backend.bot.orchestrator import Orchestrator
-    mock_resp = _mock_anthropic_response("Конечно помогу!")
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("Конечно помогу!")
+        )
         o = Orchestrator()
         steps = await o.plan("Привет")
     assert steps == []
@@ -233,9 +245,10 @@ async def test_orchestrator_plan_returns_empty_on_no_plan():
 @pytest.mark.asyncio
 async def test_orchestrator_execute_direct():
     from backend.bot.orchestrator import Orchestrator
-    mock_resp = _mock_anthropic_response("Прямой ответ")
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("Прямой ответ")
+        )
         o = Orchestrator()
         result = await o.execute_step("direct", "Расскажи о себе")
     assert result == "Прямой ответ"
@@ -244,9 +257,10 @@ async def test_orchestrator_execute_direct():
 @pytest.mark.asyncio
 async def test_orchestrator_execute_unknown_agent_falls_back():
     from backend.bot.orchestrator import Orchestrator
-    mock_resp = _mock_anthropic_response("Ответ запасного агента")
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_anthropic_response("Ответ запасного агента")
+        )
         o = Orchestrator()
         result = await o.execute_step("unknown_agent", "Задача")
     assert result == "Ответ запасного агента"
@@ -265,17 +279,17 @@ async def test_orchestrator_run_single_step():
     from backend.bot.orchestrator import Orchestrator
     plan_text = "ПЛАН:\n1. direct: Ответь на вопрос"
     answer_text = "Вот ответ на ваш вопрос"
+    responses = [_mock_anthropic_response(plan_text), _mock_anthropic_response(answer_text)]
     call_count = 0
 
-    def mock_create(**kwargs):
+    async def mock_create(**kwargs):
         nonlocal call_count
+        r = responses[min(call_count, len(responses) - 1)]
         call_count += 1
-        if call_count == 1:
-            return _mock_anthropic_response(plan_text)
-        return _mock_anthropic_response(answer_text)
+        return r
 
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.side_effect = mock_create
+        mock_client.messages.create = mock_create
         o = Orchestrator()
         result = await o.run("Простой вопрос")
     assert result == answer_text
@@ -284,17 +298,20 @@ async def test_orchestrator_run_single_step():
 @pytest.mark.asyncio
 async def test_orchestrator_run_empty_plan_falls_back():
     from backend.bot.orchestrator import Orchestrator
+    responses = [
+        _mock_anthropic_response("Нет плана"),
+        _mock_anthropic_response("Прямой ответ"),
+    ]
     call_count = 0
 
-    def mock_create(**kwargs):
+    async def mock_create(**kwargs):
         nonlocal call_count
+        r = responses[min(call_count, len(responses) - 1)]
         call_count += 1
-        if call_count == 1:
-            return _mock_anthropic_response("Нет плана")  # без ПЛАН:
-        return _mock_anthropic_response("Прямой ответ")
+        return r
 
     with patch("backend.bot.orchestrator._client") as mock_client:
-        mock_client.messages.create.side_effect = mock_create
+        mock_client.messages.create = mock_create
         o = Orchestrator()
         result = await o.run("Какой-то вопрос")
     assert result == "Прямой ответ"
