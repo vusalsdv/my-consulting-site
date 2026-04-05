@@ -19,3 +19,4 @@ venv/
 # Misc
 .DS_Store
 *.log
+backend/bot/profile_data.json
