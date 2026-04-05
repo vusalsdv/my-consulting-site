@@ -77,6 +77,13 @@ ORCHESTRATOR_PROMPT = f"""Ты оркестратор команды AI-аген
 """
 
 
+def _text(response) -> str:
+    """Безопасно извлекает текст из ответа Claude."""
+    if not response.content:
+        raise ValueError("Claude вернул пустой ответ")
+    return response.content[0].text
+
+
 class TaskResult:
     def __init__(self, agent: str, task: str, result: str) -> None:
         self.agent = agent
@@ -94,7 +101,7 @@ class Orchestrator:
             system=ORCHESTRATOR_PROMPT,
             messages=[{"role": "user", "content": f"Задача: {task}"}],
         )
-        text = response.content[0].text
+        text = _text(response)
         steps = []
         in_plan = False
         for line in text.splitlines():
@@ -103,7 +110,6 @@ class Orchestrator:
                 in_plan = True
                 continue
             if in_plan and line and line[0].isdigit():
-                # Парсим "1. agent_key: задача"
                 try:
                     _, rest = line.split(".", 1)
                     agent_key, task_desc = rest.strip().split(":", 1)
@@ -117,22 +123,31 @@ class Orchestrator:
 
     async def execute_step(self, agent: str, task: str, context: str = "") -> str:
         """Выполняет один шаг — вызывает нужный агент."""
-        if agent == "direct":
-            return await self._direct_answer(task, context)
-        elif agent == "cover_letter":
-            return await self._agent_cover_letter(task)
-        elif agent == "research":
-            return await self._agent_research(task)
-        elif agent == "analysis":
-            return await self._agent_analysis(task, context)
-        elif agent == "draft":
-            return await self._agent_draft(task)
-        elif agent == "plan":
-            return await self._agent_plan(task)
-        elif agent in ("job_search",):
-            return f"[Запусти /hh или /scan для поиска вакансий]"
-        else:
-            return await self._direct_answer(task, context)
+        try:
+            if agent == "direct":
+                return await self._direct_answer(task, context)
+            elif agent == "cover_letter":
+                return await self._agent_cover_letter(task)
+            elif agent == "research":
+                return await self._agent_research(task)
+            elif agent == "analysis":
+                return await self._agent_analysis(task, context)
+            elif agent == "draft":
+                return await self._agent_draft(task)
+            elif agent == "plan":
+                return await self._agent_plan(task)
+            elif agent == "job_search":
+                return (
+                    "Для поиска вакансий используй команды:\n"
+                    "/hh — поиск на HH.ru по всем запросам\n"
+                    "/scan — сканирование Telegram-каналов\n\n"
+                    "Или скажи что именно ищешь и я помогу сформировать запрос."
+                )
+            else:
+                return await self._direct_answer(task, context)
+        except Exception as e:
+            log.error("Agent %s error for task '%s': %s", agent, task[:50], e)
+            return f"[Агент {agent} вернул ошибку: {type(e).__name__}]"
 
     async def run(self, task: str) -> str:
         """Полный цикл: план → выполнение → сводка."""
@@ -165,18 +180,19 @@ class Orchestrator:
             system=f"Собери результаты работы команды агентов в единый чёткий ответ для {OWNER_NAME}а. Без лишних слов.",
             messages=[{"role": "user", "content": combined}],
         )
-        return response.content[0].text
+        return _text(response)
 
     # ── Specialized agents ────────────────────────────────────
 
     async def _direct_answer(self, task: str, context: str) -> str:
+        content = f"{task}\n\nКонтекст:\n{context}" if context else task
         response = await _client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1500,
             system=f"Ты личный ассистент {OWNER_NAME}а. Отвечай чётко и по делу.\n\n{profile.as_text()}",
-            messages=[{"role": "user", "content": task}],
+            messages=[{"role": "user", "content": content}],
         )
-        return response.content[0].text
+        return _text(response)
 
     async def _agent_cover_letter(self, task: str) -> str:
         from .job_scanner import generate_cover_letter
@@ -189,7 +205,7 @@ class Orchestrator:
             system=f"Ты агент ресёрча. Собери структурированную информацию по запросу {OWNER_NAME}а.",
             messages=[{"role": "user", "content": task}],
         )
-        return response.content[0].text
+        return _text(response)
 
     async def _agent_analysis(self, task: str, context: str) -> str:
         full = f"{task}\n\nКонтекст:\n{context}" if context else task
@@ -199,7 +215,7 @@ class Orchestrator:
             system=f"Ты агент анализа. Дай структурированный разбор.\n\n{profile.as_text()}",
             messages=[{"role": "user", "content": full}],
         )
-        return response.content[0].text
+        return _text(response)
 
     async def _agent_draft(self, task: str) -> str:
         response = await _client.messages.create(
@@ -208,7 +224,7 @@ class Orchestrator:
             system=f"Ты агент написания текстов. Пишешь от имени или для {OWNER_NAME}а.\n\n{profile.as_text()}",
             messages=[{"role": "user", "content": task}],
         )
-        return response.content[0].text
+        return _text(response)
 
     async def _agent_plan(self, task: str) -> str:
         response = await _client.messages.create(
@@ -217,7 +233,7 @@ class Orchestrator:
             system=f"Ты агент планирования. Строишь конкретные планы с шагами для {OWNER_NAME}а.\n\n{profile.as_text()}",
             messages=[{"role": "user", "content": task}],
         )
-        return response.content[0].text
+        return _text(response)
 
 
 orchestrator = Orchestrator()

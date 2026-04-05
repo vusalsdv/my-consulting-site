@@ -11,6 +11,12 @@ from .profile import profile
 log = logging.getLogger(__name__)
 _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
+
+def _text(response) -> str:
+    if not response.content:
+        raise ValueError("Claude вернул пустой ответ")
+    return _text(response)
+
 _ANALYZE_PROMPT = """Проанализируй вакансию и верни структурированный ответ.
 
 Профиль соискателя:
@@ -98,4 +104,4 @@ async def generate_cover_letter(vacancy_text: str, analysis: dict) -> str:
         max_tokens=1200,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text
+    return _text(response)

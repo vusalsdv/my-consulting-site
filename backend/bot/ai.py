@@ -8,6 +8,14 @@ from .config import ANTHROPIC_API_KEY, CLAUDE_MODEL, ASSISTANT_NAME, OWNER_NAME
 
 _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
+
+def _text(response) -> str:
+    """Безопасно извлекает текст из ответа Claude."""
+    if not response.content:
+        raise ValueError("Claude вернул пустой ответ")
+    return response.content[0].text
+
+
 SYSTEM_PROMPT = f"""Ты — {ASSISTANT_NAME}, личный помощник {OWNER_NAME}а.
 
 {OWNER_NAME} — операционный консультант и Fractional COO. Помогает предпринимателям \
@@ -57,4 +65,4 @@ async def get_reply(history: list[dict], user_message: str) -> str:
         messages=messages,
     )
 
-    return response.content[0].text
+    return _text(response)

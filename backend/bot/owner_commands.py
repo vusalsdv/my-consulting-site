@@ -21,7 +21,7 @@ owner_router = Router()
 # ── Guard ─────────────────────────────────────────────────────
 
 def _is_owner(msg: Message) -> bool:
-    return str(msg.chat.id) == str(OWNER_CHAT_ID)
+    return msg.chat.id == OWNER_CHAT_ID
 
 
 # ── Away mode ─────────────────────────────────────────────────

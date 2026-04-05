@@ -26,7 +26,7 @@ OWNER_HISTORY_KEY = -1  # специальный ключ для истории 
 
 
 def _is_owner(msg: Message) -> bool:
-    return str(msg.chat.id) == str(OWNER_CHAT_ID)
+    return msg.chat.id == OWNER_CHAT_ID
 
 
 async def _notify_owner(bot, chat_id: int, user, first_message: str) -> None:
@@ -175,7 +175,7 @@ async def handle_document(msg: Message) -> None:
 
 # ── Forwarded messages (owner forwards vacancies) ─────────────
 
-@router.message(F.forward_date & F.text)
+@router.message((F.forward_date | F.forward_from_chat | F.forward_from) & F.text)
 async def handle_forwarded(msg: Message) -> None:
     if _is_owner(msg):
         await process_forwarded_vacancy(msg)

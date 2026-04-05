@@ -7,7 +7,7 @@ load_dotenv()
 BOT_TOKEN: str = os.environ["TG_BOT_TOKEN"]
 
 # Владелец — куда слать уведомления о новых диалогах
-OWNER_CHAT_ID: str = os.environ["TG_OWNER_CHAT_ID"]
+OWNER_CHAT_ID: int = int(os.environ["TG_OWNER_CHAT_ID"])
 
 # Claude API
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]

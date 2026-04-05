@@ -61,6 +61,8 @@ async def get_owner_reply(history: list[dict], user_message: str) -> tuple[str, 
         messages=messages,
     )
 
+    if not response.content:
+        raise ValueError("Claude вернул пустой ответ")
     reply = response.content[0].text
 
     # Извлекаем факты для профиля если ассистент явно их отмечает
@@ -94,6 +96,8 @@ async def extract_and_save_profile_facts(user_message: str) -> list[str]:
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
+        if not response.content:
+            return []
         text = response.content[0].text.strip()
         if text == "НЕТ" or not text:
             return []

@@ -17,7 +17,7 @@ from .config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from .profile import profile
 
 log = logging.getLogger(__name__)
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 SUPPORTED_MIME = {
     "application/pdf",
@@ -103,17 +103,21 @@ def _read_docx(buf: io.BytesIO) -> str:
 
 async def parse_resume(text: str) -> dict:
     """Вызывает Claude для структурированного извлечения данных из резюме."""
-    prompt = _PARSE_PROMPT.format(text=text[:8000])  # лимит контекста
-    response = _client.messages.create(
+    prompt = _PARSE_PROMPT.format(text=text[:8000])
+    response = await _client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
+    if not response.content:
+        raise ValueError("Пустой ответ от Claude")
     raw = response.content[0].text.strip()
 
     # Убираем возможные ```json ... ``` обёртки
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
+    if "```" in raw:
+        parts = raw.split("```")
+        # берём первый блок внутри тройных кавычек
+        raw = parts[1] if len(parts) > 1 else raw
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
