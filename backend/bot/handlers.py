@@ -114,8 +114,11 @@ async def cmd_task(msg: Message) -> None:
         result = await orchestrator.run(task)
         await msg.answer(result)
     except Exception as e:
-        log.error("Orchestrator error: %s", e)
-        await msg.answer("Ошибка при выполнении задачи. Попробуй ещё раз.")
+        log.error("Orchestrator error: %s", e, exc_info=True)
+        await msg.answer(
+            f"⚠️ Ошибка при выполнении задачи:\n<code>{type(e).__name__}: {e}</code>",
+            parse_mode="HTML",
+        )
 
 
 # ── Documents (owner sends resume) ───────────────────────────

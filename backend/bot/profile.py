@@ -1,20 +1,18 @@
 """
 Профессиональный профиль владельца.
-Хранится in-memory + файл на диске (profile_data.json).
-Обновляется через команды и диалог с ботом.
+Хранится в Supabase (таблица owner_profile) + файл как fallback для локальной разработки.
 """
 
 import copy
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 PROFILE_FILE = Path(__file__).parent / "profile_data.json"
 
-# ── Начальный профиль Вусала (будет расширяться через диалог) ─
+# ── Начальный профиль Вусала ──────────────────────────────────
 
 DEFAULT_PROFILE = {
     "name": "Вусал",
@@ -74,9 +72,25 @@ DEFAULT_PROFILE = {
         "при этом работодателям не знаю о консалтинге."
     ),
 
-    "notes": [],  # свободные заметки добавленные через диалог
-    "updated_at": datetime.now(timezone.utc).isoformat(),
+    "notes": [],
+    "updated_at": "",
 }
+
+_SUPABASE_TABLE = "owner_profile"
+_SUPABASE_ROW_ID = "main"
+
+
+def _get_supabase():
+    """Возвращает Supabase клиент или None если не настроен."""
+    try:
+        from .config import SUPABASE_URL, SUPABASE_ANON_KEY
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            return None
+        from supabase import create_client
+        return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    except Exception as e:
+        log.warning("Supabase init error: %s", e)
+        return None
 
 
 class OwnerProfile:
@@ -84,26 +98,59 @@ class OwnerProfile:
         self._data: dict = {}
         self._load()
 
+    # ── Persistence ───────────────────────────────────────────
+
     def _load(self) -> None:
+        # 1. Пробуем Supabase
+        db = _get_supabase()
+        if db:
+            try:
+                resp = db.table(_SUPABASE_TABLE).select("data").eq("id", _SUPABASE_ROW_ID).execute()
+                if resp.data:
+                    self._data = resp.data[0]["data"]
+                    log.info("Profile loaded from Supabase")
+                    return
+            except Exception as e:
+                log.warning("Supabase profile load error: %s", e)
+
+        # 2. Fallback: файл на диске (локальная разработка)
         if PROFILE_FILE.exists():
             try:
                 self._data = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
-                log.info("Profile loaded from disk")
+                log.info("Profile loaded from file")
                 return
             except Exception as e:
-                log.warning("Profile load error: %s", e)
+                log.warning("Profile file load error: %s", e)
+
+        # 3. Первый запуск — используем DEFAULT_PROFILE
         self._data = copy.deepcopy(DEFAULT_PROFILE)
         self._save()
+        log.info("Profile initialized with defaults")
 
     def _save(self) -> None:
+        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        # 1. Сохраняем в Supabase
+        db = _get_supabase()
+        if db:
+            try:
+                db.table(_SUPABASE_TABLE).upsert({
+                    "id": _SUPABASE_ROW_ID,
+                    "data": self._data,
+                }).execute()
+                log.debug("Profile saved to Supabase")
+                return
+            except Exception as e:
+                log.warning("Supabase profile save error: %s", e)
+
+        # 2. Fallback: файл
         try:
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
             PROFILE_FILE.write_text(
                 json.dumps(self._data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
         except Exception as e:
-            log.error("Profile save error: %s", e)
+            log.error("Profile file save error: %s", e)
 
     # ── Read ──────────────────────────────────────────────────
 
@@ -160,13 +207,11 @@ class OwnerProfile:
     # ── Write ─────────────────────────────────────────────────
 
     def add_note(self, note: str) -> None:
-        """Добавляет свободную заметку (из диалога с владельцем)."""
         notes = self._data.setdefault("notes", [])
         timestamp = datetime.now(timezone.utc).strftime("%d.%m.%Y")
         notes.append(f"[{timestamp}] {note}")
         if len(notes) > 100:
-            notes = notes[-100:]
-        self._data["notes"] = notes
+            self._data["notes"] = notes[-100:]
         self._save()
 
     def update_field(self, field: str, value) -> None:
@@ -180,8 +225,7 @@ class OwnerProfile:
             self._save()
 
     def add_achievement(self, achievement: str) -> None:
-        achievements = self._data.setdefault("achievements", [])
-        achievements.append(achievement)
+        self._data.setdefault("achievements", []).append(achievement)
         self._save()
 
     def add_experience(self, role: str, company: str, period: str, highlights: list[str]) -> None:
@@ -195,12 +239,15 @@ class OwnerProfile:
     def show_summary(self) -> str:
         d = self._data
         skills_preview = ", ".join(d.get("skills", [])[:5])
+        exp_count = len(d.get("experience", []))
         return (
             f"👤 <b>{d.get('name')}</b>\n"
             f"🎯 {d.get('target_role')}\n"
             f"🖥 {d.get('work_format')} | 💰 {d.get('salary_expectation')}\n\n"
+            f"<b>Мест работы:</b> {exp_count}\n"
             f"<b>Навыки:</b> {skills_preview}...\n"
             f"<b>Отрасли:</b> {', '.join(d.get('industries', []))}\n"
+            f"<b>Достижений:</b> {len(d.get('achievements', []))}\n"
             f"<b>Заметок:</b> {len(d.get('notes', []))}\n\n"
             f"Обновлён: {d.get('updated_at', '')[:10]}"
         )
