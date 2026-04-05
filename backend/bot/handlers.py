@@ -17,6 +17,7 @@ from .owner_assistant import get_owner_reply
 from .orchestrator import orchestrator
 from .profile import profile
 from .ai import get_reply
+from .resume_parser import extract_text, parse_resume, save_resume_to_profile, is_supported
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -115,6 +116,58 @@ async def cmd_task(msg: Message) -> None:
     except Exception as e:
         log.error("Orchestrator error: %s", e)
         await msg.answer("Ошибка при выполнении задачи. Попробуй ещё раз.")
+
+
+# ── Documents (owner sends resume) ───────────────────────────
+
+@router.message(F.document)
+async def handle_document(msg: Message) -> None:
+    if not _is_owner(msg):
+        await msg.answer("Принимаю только текстовые сообщения.")
+        return
+
+    doc = msg.document
+    if not is_supported(doc):
+        await msg.answer(
+            "Поддерживаю: PDF, DOCX, TXT.\n"
+            f"Получил: {doc.file_name or 'неизвестный файл'}"
+        )
+        return
+
+    await msg.answer(f"📄 Читаю <b>{doc.file_name}</b>...", parse_mode="HTML")
+    await msg.bot.send_chat_action(msg.chat.id, "typing")
+
+    try:
+        text = await extract_text(doc, msg.bot)
+        if not text.strip():
+            await msg.answer("Не удалось извлечь текст из файла. Попробуй TXT версию.")
+            return
+
+        await msg.answer("🧠 Анализирую резюме...")
+        parsed = await parse_resume(text)
+        stats = await save_resume_to_profile(parsed)
+
+        lines = [f"✅ <b>Резюме сохранено в профиль!</b>\n"]
+        if stats["experience"]:
+            lines.append(f"📋 Мест работы добавлено: <b>{stats['experience']}</b>")
+        if stats["skills"]:
+            lines.append(f"🛠 Навыков добавлено: <b>{stats['skills']}</b>")
+        if stats["achievements"]:
+            lines.append(f"🏆 Достижений добавлено: <b>{stats['achievements']}</b>")
+
+        if not any(stats.values()):
+            lines.append("Все данные уже были в профиле — ничего нового.")
+
+        lines.append("\n/myprofile — посмотреть обновлённый профиль")
+        await msg.answer("\n".join(lines), parse_mode="HTML")
+
+    except Exception as e:
+        log.error("Resume parse error: %s", e)
+        await msg.answer(
+            "Не удалось разобрать файл. Попробуй:\n"
+            "1. Сохранить резюме как TXT и прислать снова\n"
+            "2. Или просто скопируй текст резюме в чат"
+        )
 
 
 # ── Forwarded messages (owner forwards vacancies) ─────────────
