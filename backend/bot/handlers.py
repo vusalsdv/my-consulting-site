@@ -13,7 +13,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from .storage import store
 from .config import OWNER_CHAT_ID, OWNER_NAME
 from .owner_commands import process_forwarded_vacancy
-from .owner_assistant import get_owner_reply, extract_and_save_profile_facts
+from .owner_assistant import get_owner_reply
 from .orchestrator import orchestrator
 from .profile import profile
 from .ai import get_reply
@@ -157,19 +157,11 @@ async def handle_owner_text(msg: Message) -> None:
     store.add_message(OWNER_HISTORY_KEY, "user", user_text)
     store.add_message(OWNER_HISTORY_KEY, "assistant", reply)
 
-    # Сохраняем новые факты в профиль
+    # Сохраняем новые факты в профиль (ассистент явно отмечает "Запомнил: ...")
     if new_facts:
         for fact in new_facts:
             profile.add_note(fact)
         log.info("Added %d facts to profile", len(new_facts))
-
-    # Параллельно пытаемся извлечь профильные факты из сообщения
-    try:
-        extracted = await extract_and_save_profile_facts(user_text)
-        for fact in extracted:
-            profile.add_note(fact)
-    except Exception:
-        pass
 
     await msg.answer(reply)
 
