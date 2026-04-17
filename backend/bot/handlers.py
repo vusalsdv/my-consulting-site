@@ -4,6 +4,7 @@
 - Клиенты: Claude отвечает как помощник Вусала
 """
 
+import asyncio
 import logging
 from aiogram import Router, F
 from aiogram.types import Message
@@ -108,15 +109,57 @@ async def cmd_task(msg: Message) -> None:
         )
         return
     task = parts[1]
-    await msg.answer(f"🤖 Запускаю агентов...\n\n<i>{task}</i>", parse_mode="HTML")
-    await msg.bot.send_chat_action(msg.chat.id, "typing")
+    progress = await msg.answer(f"🤖 Запускаю агентов...\n\n<i>{task}</i>", parse_mode="HTML")
+
+    # Шлём typing каждые 4 сек пока задача выполняется
+    async def keep_typing():
+        while True:
+            await msg.bot.send_chat_action(msg.chat.id, "typing")
+            await asyncio.sleep(4)
+
+    typing_task = asyncio.create_task(keep_typing())
     try:
         result = await orchestrator.run(task)
-        await msg.answer(result)
+        await progress.edit_text(result)
     except Exception as e:
         log.error("Orchestrator error: %s", e, exc_info=True)
-        await msg.answer(
+        await progress.edit_text(
             f"⚠️ Ошибка при выполнении задачи:\n<code>{type(e).__name__}: {e}</code>",
+            parse_mode="HTML",
+        )
+    finally:
+        typing_task.cancel()
+
+
+# ── /research — разведка компании ────────────────────────────
+
+@router.message(Command("research"))
+async def cmd_research(msg: Message) -> None:
+    if not _is_owner(msg):
+        return
+    parts = (msg.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await msg.answer(
+            "Использование: <code>/research Название компании</code>\n\n"
+            "Разберу компанию перед откликом: основатели, продукт, культура, риски.",
+            parse_mode="HTML",
+        )
+        return
+    company = parts[1].strip()
+    await msg.answer(f"🔍 Исследую <b>{company}</b>...", parse_mode="HTML")
+    await msg.bot.send_chat_action(msg.chat.id, "typing")
+    try:
+        result = await orchestrator.execute_step(
+            "research",
+            f"Исследуй компанию «{company}» для соискателя на позицию COO/операционный директор. "
+            f"Включи: чем занимается, размер/стадия, основатели, культура, открытые вакансии, "
+            f"возможные риски, почему может быть интересно. Будь конкретным.",
+        )
+        await msg.answer(result)
+    except Exception as e:
+        log.error("Research error: %s", e, exc_info=True)
+        await msg.answer(
+            f"⚠️ Ошибка:\n<code>{type(e).__name__}: {e}</code>",
             parse_mode="HTML",
         )
 
@@ -137,39 +180,40 @@ async def handle_document(msg: Message) -> None:
         )
         return
 
-    await msg.answer(f"📄 Читаю <b>{doc.file_name}</b>...", parse_mode="HTML")
+    progress = await msg.answer(f"📄 Читаю <b>{doc.file_name}</b>...", parse_mode="HTML")
     await msg.bot.send_chat_action(msg.chat.id, "typing")
 
     try:
         text = await extract_text(doc, msg.bot)
         if not text.strip():
-            await msg.answer("Не удалось извлечь текст из файла. Попробуй TXT версию.")
+            await progress.edit_text("❌ Не удалось извлечь текст. Попробуй TXT версию.")
             return
 
-        await msg.answer("🧠 Анализирую резюме...")
+        await progress.edit_text(f"📄 <b>{doc.file_name}</b> прочитан.\n🧠 Анализирую структуру...", parse_mode="HTML")
         parsed = await parse_resume(text)
         stats = await save_resume_to_profile(parsed)
 
-        lines = [f"✅ <b>Резюме сохранено в профиль!</b>\n"]
+        lines = ["✅ <b>Резюме сохранено в профиль!</b>\n"]
         if stats["experience"]:
             lines.append(f"📋 Мест работы добавлено: <b>{stats['experience']}</b>")
         if stats["skills"]:
             lines.append(f"🛠 Навыков добавлено: <b>{stats['skills']}</b>")
         if stats["achievements"]:
             lines.append(f"🏆 Достижений добавлено: <b>{stats['achievements']}</b>")
-
         if not any(stats.values()):
             lines.append("Все данные уже были в профиле — ничего нового.")
-
         lines.append("\n/myprofile — посмотреть обновлённый профиль")
-        await msg.answer("\n".join(lines), parse_mode="HTML")
+        await progress.edit_text("\n".join(lines), parse_mode="HTML")
 
     except Exception as e:
         log.error("Resume parse error: %s", e)
-        await msg.answer(
-            "Не удалось разобрать файл. Попробуй:\n"
-            "1. Сохранить резюме как TXT и прислать снова\n"
-            "2. Или просто скопируй текст резюме в чат"
+        await progress.edit_text(
+            f"❌ Не удалось разобрать файл.\n\n"
+            f"Попробуй:\n"
+            f"1. Сохрани резюме как TXT и пришли снова\n"
+            f"2. Или скопируй текст резюме прямо в чат\n\n"
+            f"<code>{type(e).__name__}: {e}</code>",
+            parse_mode="HTML",
         )
 
 

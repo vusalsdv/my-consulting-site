@@ -185,11 +185,15 @@ async def cmd_help(msg: Message) -> None:
         "/removechannel @username — убрать\n"
         "/channels — список каналов\n"
         "/scan — запустить сканирование\n\n"
+        "<b>Автосканирование:</b>\n"
+        "/autoscan on|off — включить/выключить ежедневный дайджест\n"
+        "/scantime 9 — время сканирования (час МСК)\n\n"
         "<b>Вакансии:</b>\n"
         "Просто <b>перешли</b> мне любое сообщение с вакансией — разберу и предложу письмо.\n\n"
         "<b>Личный ассистент:</b>\n"
         "/myprofile — посмотреть сохранённый профиль\n"
         "/task [задача] — запустить агентов на сложную задачу\n"
+        "/research [компания] — разведка компании перед откликом\n"
         "/reset — сбросить историю диалога\n\n"
         "Просто пиши — я помогу с любой задачей и запомню о тебе важное.",
         parse_mode="HTML",
@@ -213,6 +217,46 @@ async def cmd_digest(msg: Message) -> None:
             f"   Сообщений: {d['count']} | Последнее: {d['last_at']}\n"
         )
     await msg.answer("\n".join(lines), parse_mode="HTML")
+
+
+# ── Autoscan settings ─────────────────────────────────────────
+
+@owner_router.message(Command("autoscan"))
+async def cmd_autoscan(msg: Message) -> None:
+    if not _is_owner(msg):
+        return
+    from .scheduler import set_autoscan, get_status
+    parts = (msg.text or "").split()
+    if len(parts) < 2 or parts[1] not in ("on", "off"):
+        await msg.answer(
+            f"Использование: /autoscan on | /autoscan off\n\n{get_status()}",
+            parse_mode="HTML",
+        )
+        return
+    enabled = parts[1] == "on"
+    set_autoscan(enabled)
+    icon = "✅" if enabled else "⏸"
+    await msg.answer(f"{icon} {get_status()}")
+
+
+@owner_router.message(Command("scantime"))
+async def cmd_scantime(msg: Message) -> None:
+    if not _is_owner(msg):
+        return
+    from .scheduler import set_scan_hour, get_status
+    parts = (msg.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await msg.answer(
+            "Использование: /scantime 9 (час МСК, 0-23)\n\n"
+            + get_status()
+        )
+        return
+    hour = int(parts[1])
+    if not 0 <= hour <= 23:
+        await msg.answer("Час должен быть от 0 до 23")
+        return
+    set_scan_hour(hour)
+    await msg.answer(f"✅ {get_status()}")
 
 
 # ── Internal: process found/forwarded vacancy ─────────────────

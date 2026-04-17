@@ -15,6 +15,7 @@ from aiogram.enums import ParseMode
 from .config import BOT_TOKEN
 from .handlers import router
 from .owner_commands import owner_router
+from .scheduler import daily_scan_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,8 +38,18 @@ async def main() -> None:
     dp.include_router(owner_router)
     dp.include_router(router)
 
-    log.info("Bot starting (with job search module)...")
-    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+    # Запускаем планировщик как фоновый таск
+    scan_task = asyncio.create_task(daily_scan_loop(bot))
+
+    log.info("Bot starting with scheduler...")
+    try:
+        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+    finally:
+        scan_task.cancel()
+        try:
+            await scan_task
+        except asyncio.CancelledError:
+            pass
 
 
 if __name__ == "__main__":
